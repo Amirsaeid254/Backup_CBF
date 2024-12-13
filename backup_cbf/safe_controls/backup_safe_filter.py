@@ -37,15 +37,16 @@ class BackupSafeControl(InputConstQPSafeControl):
 
         if torch.any(gamma_pos_ind):
             masked_x = x[gamma_pos_ind, ...]
-            Q, c = self._make_objective(masked_x)
+            Q, c = self._make_objective(x)
+            Q = Q[gamma_pos_ind, ...]
+            c = c[gamma_pos_ind, ...]
             ac_G = self._ac_G(masked_x)
             ac_h = self._ac_h(masked_x)
             G = torch.cat([-Lg_hocbf[gamma_pos_ind, ...].unsqueeze(1), ac_G], dim=1)
             h = torch.cat([(Lf_hocbf[gamma_pos_ind, ...] + self._alpha(hocbf[gamma_pos_ind, ...] - self.barrier_cfg.epsilon)), ac_h], dim=1)
             A, b = self._make_eq_const(masked_x, Q.shape)
-            u_star_qp = QPFunction()(Q, c, G, h, A, b)
+            u_star[gamma_pos_ind, ...] = QPFunction()(Q, c, G, h, A, b)
 
-        u_star[gamma_pos_ind, ...] = u_star_qp
         beta = torch.where(gamma > 0,
                            torch.where(gamma >= 1, 1, gamma),
                            0)
@@ -56,7 +57,7 @@ class BackupSafeControl(InputConstQPSafeControl):
             return u
 
         info={}
-        constraint_val = torch.einsum("brm,bm->br", Lg_hocbf.unsqueeze(1), u) + (Lf_hocbf + self._alpha(hocbf - self.barrier_cfg.epsilon))
+        constraint_val = torch.einsum('bi,bi->b', Lg_hocbf, u).unsqueeze(-1) + (Lf_hocbf + self._alpha(hocbf - self.barrier_cfg.epsilon))
         info['constraint_val'] = constraint_val
         info['u_star'] = u_star
         info['ub_select'] = ub_select
@@ -71,7 +72,6 @@ class BackupSafeControl(InputConstQPSafeControl):
 
     def _get_backup_blend(self, h_star_vals, ub_vals):
         h_star_ind = torch.where(h_star_vals >= self.barrier_cfg.epsilon)[0]
-        # valid_ub = torch.stack([self._barrier.backup_policies[ind](x) for ind in h_star_ind])
         valid_ub = ub_vals[h_star_ind, ...]
         num = torch.sum((h_star_vals[h_star_ind,...] - self.barrier_cfg.epsilon) * valid_ub, dim=0)
         den = torch.sum((h_star_vals[h_star_ind,...] - self.barrier_cfg.epsilon), dim=0)
@@ -79,7 +79,7 @@ class BackupSafeControl(InputConstQPSafeControl):
 
     def _get_feasibility_factor(self, x, Lf_hocbf, Lg_hocbf, hocbf):
         lp_sol = lp_solver(-Lg_hocbf, self._ac_G(x), self._ac_h(x))
-        return Lf_hocbf + self._alpha(hocbf - self.barrier_cfg.epsilon) + lp_sol * Lg_hocbf
+        return Lf_hocbf + self._alpha(hocbf - self.barrier_cfg.epsilon) +  torch.einsum('bi,bi->b', Lg_hocbf, lp_sol).unsqueeze(-1)
 
 class MinIntervBackupSafeControl(MinIntervQPSafeControl,BackupSafeControl):
     pass

@@ -40,7 +40,7 @@ cfg = AD(softmax_rho=50,
 torch.set_default_dtype(torch.float64)
 
 
-control_bounds = torch.tensor([-1.5, 1.5]).to(torch.float64)
+control_bounds = torch.tensor([-1.5, 1.5], dtype=torch.float64)
 
 
 ub_gain = torch.tensor([[-3, -3],
@@ -49,13 +49,13 @@ ub_gain = torch.tensor([[-3, -3],
 
 ub_center = torch.tensor([[0, 0],
              [pi/2, 0],
-             [-pi/2, 0]]).to(torch.float64)
+             [-pi/2, 0]], dtype=torch.float64)
 
 
 
 # Initial Conditions
 x0 = torch.tensor([[0.5, 0.0],
-                   [-2.7, 0.0]])
+                   [-2.7, 0.0]], dtype=torch.float64)
 
 
 

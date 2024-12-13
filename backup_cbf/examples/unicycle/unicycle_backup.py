@@ -2,8 +2,6 @@ from attrdict import AttrDict as AD
 import matplotlib as mpl
 from math import pi
 
-from triton.language import dtype
-
 from backup_cbf.examples.unicycle.unicycle_dynamic import UnicycleReducedOrderDynamics
 from backup_cbf.examples.unicycle.map_config import map_config
 from backup_cbf.barriers.backup_barrier import BackupBarrier
@@ -32,14 +30,14 @@ cfg = AD(softmax_rho=50,
          obstacle_alpha=[],
          velocity_alpha=[],
          horizon=1,
-         time_steps=0.01,
+         time_steps=0.02,
          method='dopri5',
          epsilon=0.0,
          h_scale=0.012,
          feas_scale=0.05,
          )
 
-# Backup configs
+# Map configs
 map_cfg = AD(
          softmin_rho=20,
          boundary_alpha=[],
@@ -49,23 +47,23 @@ map_cfg = AD(
          )
 
 torch.set_default_dtype(torch.float64)
-control_bounds = torch.tensor([[-4.0, 4.0], [-1.0, 1.0]]).to(torch.float64)
-ub_gain = torch.tensor([[-15.0, 0.0]]).to(torch.float64)
+control_bounds = torch.tensor([[-4.0, 4.0], [-1.0, 1.0]], dtype=torch.float64)
+ub_gain = torch.tensor([[-15.0, 0.0]], dtype=torch.float64)
 dynamics_param = AD(d=1, control_bounds=control_bounds)
 
 control_gains = dict(k1=0.8, k2=0.8)
 
 
 # # Goal positions
-# goal_pos = torch.tensor([
-#     [2.0, 4.5],
-#     [-1.0, 0.0],
-#     [-4.5, 8.0],
-# ])
+goal_pos = torch.tensor([
+    [2.0, 4.5],
+    [-1.0, 0.0],
+    [-4.5, 8.0],
+])
 
 
 
-goal_pos = torch.tensor([-4.5, 8.0], dtype=torch.float64).unsqueeze(0)
+# goal_pos = torch.tensor([-4.5, 8.0], dtype=torch.float64).unsqueeze(0)
 
 # Initial Conditions
 x0 = torch.tensor([[-3.0, -8.5, 0.0, 0.0]], dtype=torch.float64).repeat(goal_pos.shape[0], 1)
@@ -111,7 +109,7 @@ safety_filter = (MinIntervBackupSafeControl(
 
 
 
-timestep = 0.01
+timestep = 0.02
 sim_time = 20.0
 
 # assign desired control based on the goal positions
@@ -121,13 +119,11 @@ safety_filter.assign_desired_control(
 
 # Simulate trajectories
 start_time = time()
-trajs = safety_filter.get_safe_optimal_trajs_zoh(x0=x0, sim_time=sim_time, timestep=timestep, method='euler')
+trajs = safety_filter.get_safe_optimal_trajs_zoh(x0=x0, sim_time=sim_time, timestep=timestep, method='dopri5')
 print(time() - start_time)
-des_trajs = safety_filter.get_desired_control_trajs(x0=x0, sim_time=sim_time, timestep=timestep, method='euler')
 
 # Rearrange trajs
 trajs = [torch.vstack(t.split(dynamics.state_dim)) for t in torch.hstack([tt for tt in trajs])]
-des_trajs = [torch.vstack(t.split(dynamics.state_dim)) for t in torch.hstack([tt for tt in des_trajs])]
 
 
 
@@ -144,13 +140,18 @@ ub_select = []
 ud = []
 beta=[]
 h_star =[]
+des_ctrls = []
 for i, traj in enumerate(trajs):
+    des_ctrl = lambda x: vectorize_tensors(
+        partial(desired_control, goal_pos=goal_pos[i].repeat(x.shape[0], 1), dyn_params=dynamics_param, **control_gains)(x))
+    safety_filter.assign_desired_control(desired_control=des_ctrl)
     action, info = safety_filter.safe_optimal_control(traj, ret_info=True)
     hocbf, Lf_hocbf, Lg_hocbf = safety_filter.barrier.get_hocbf_and_lie_derivs(traj.to(torch.float64))
     actions.append(action)
     h_vals.append(safety_filter.barrier.hocbf(traj).detach())
     h_s.append(state_barrier.hocbf(traj).detach())
     h_star.append(safety_filter.barrier.get_h_star.detach())
+    des_ctrls.append(des_ctrl(traj))
 
     feas_factor.append(info['feas_fact'])
     constraints_val.append(info['constraint_val'])
@@ -171,17 +172,11 @@ points = torch.tensor(points, dtype=torch.float64)
 points = torch.cat((points, torch.zeros(points.shape[0], 1, dtype=torch.float64)), dim=-1)
 Z = map_.barrier.min_barrier(points)
 Z = Z.reshape(X.shape)
-#
-# Z_fwd = fwd_barrier.min_barrier(points)
-# Z_fwd = Z_fwd.reshape(X.shape)
+
 
 fig, ax = plt.subplots(figsize=(6, 6))
 
 contour_plot = ax.contour(X, Y, Z, levels=[0], colors='red')
-
-# contour_plot = ax.contour(X, Y, Z_backup0, levels=[0], colors='blue')
-#
-# contour_plot = ax.contour(X, Y, Z_fwd, levels=[0], colors='green')
 
 
 
@@ -199,11 +194,9 @@ for i in range(len(trajs)):
     ax.plot(trajs[i][0, 0], trajs[0][0, 1], 'x', color='blue', markersize=8, label=r'$x_0$' if i == 0 else None)
     ax.plot(trajs[i][-1, 0], trajs[i][-1, 1], '+', color='blue', markersize=8, label=r'$x_f$' if i == 0 else None)
     ax.plot(trajs[i][:, 0], trajs[i][:, 1], label='Trajectories' if i == 0 else None, color='black')
-    # ax.plot(des_trajs[i][:, 0], des_trajs[i][:, 1], label='Desired Trajectories' if i == 0 else None, color='purple')
     ax.plot(goal_pos[i][0], goal_pos[i][1], '*', markersize=10, color='limegreen', label='Goal' if i == 0 else None)
 
-
-ax.legend()
+ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.12), ncol=3, frameon=False, fontsize=12)
 plt.tight_layout()
 
 # Save the contour plot
@@ -233,13 +226,15 @@ axs[3].set_ylabel(r'$\theta$', fontsize=14)
 axs[4].plot(time, actions[0][:, 0], label='u', color='black')
 axs[4].plot(time, ub_select[0][:, 0], label=r'$u_b$', color='green')
 axs[4].plot(time, u_star[0][:, 0], label=r'$u_*$', color='blue')
-axs[4].legend(fontsize=14, loc='best', frameon=False)
+axs[4].plot(time, des_ctrls[0][:, 0], label=r'$u_d$', color='red', linestyle='--')
+axs[4].legend(fontsize=14, loc='upper right', frameon=False, ncol=4)
 axs[4].set_ylabel(r'$u_1$', fontsize=14)
 
 axs[5].plot(time, actions[0][:, 1], label='u', color='black')
 axs[5].plot(time, ub_select[0][:, 1], label=r'$u_b$', color='green')
 axs[5].plot(time, u_star[0][:, 1], label=r'$u_*$', color='blue')
-axs[5].legend(fontsize=14, loc='best', frameon=False)
+axs[5].plot(time, des_ctrls[0][:, 1], label=r'$u_d$', color='red', linestyle='--')
+axs[5].legend(fontsize=14, loc='upper right', frameon=False, ncol=4)
 axs[5].set_ylabel(r'$u_2$', fontsize=14)
 
 axs[5].set_xlabel(r'$t~(\rm {s})$', fontsize=14)
@@ -263,13 +258,14 @@ axs[0].plot(time, torch.zeros(time.shape[0], 1), color='green', linestyle='dotte
 axs[0].set_ylabel(r'$h$', fontsize=14)
 axs[0].legend(fontsize=14, loc='best', frameon=False)
 axs[0].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
-
+axs[0].set_yscale('log')
 
 axs[1].plot(time, (h_vals[0][:, 0] - cfg.epsilon)/cfg.h_scale, label=r'$\frac{h - \epsilon}{\kappa_h}$', color='blue')
 axs[1].plot(time, (feas_factor[0][:, 0])/cfg.feas_scale, label=r'$\frac{\beta}{\kappa_\beta}$', color='red')
 axs[1].plot(time, torch.zeros(time.shape[0], 1), color='green')
 axs[1].set_ylabel(r'$\frac{h - \epsilon}{\kappa_h}, \frac{\beta}{\kappa_\beta}$', fontsize=14)
 axs[1].legend(fontsize=14, loc='best', frameon=False)
+axs[1].set_yscale('log')
 
 
 axs[2].plot(time, beta[0][:, 0], label=r'$\sigma$', color='blue')
