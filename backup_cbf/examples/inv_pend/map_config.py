@@ -5,7 +5,7 @@ from backup_cbf.utils.utils import *
 
 map_config = dict(
     geoms=(
-        ('norm_boundary', AD(center=[0.0, 0.0], size=[pi, 1], p=100)),
+        ('norm_boundary', AD(center=[0.0, 0.0], size=[pi, pi], p=100)),
     ))
 
 

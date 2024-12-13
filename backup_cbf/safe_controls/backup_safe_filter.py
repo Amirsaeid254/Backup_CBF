@@ -29,20 +29,23 @@ class BackupSafeControl(InputConstQPSafeControl):
             ub_select = self._barrier.backup_policies[0](x)
 
         gamma = torch.min((hocbf - self.barrier_cfg.epsilon) / self.barrier_cfg.h_scale, feas_fact / self.barrier_cfg.feas_scale)
+        gamma_pos_ind = (gamma>= 0).flatten()
+        gamma_neg_ind = (gamma < 0).flatten()
 
+        u_star = torch.zeros_like(ub_select)
+        u_star[gamma_neg_ind, ...] = ub_select[gamma_neg_ind, ...]
 
-        if torch.all(gamma) <= 0:
-            u_star = ub_select
-        else:
-            Q, c = self._make_objective(x)
-            ac_G = self._ac_G(x)
-            ac_h = self._ac_h(x)
-            G = torch.cat([-Lg_hocbf.unsqueeze(1), ac_G], dim=1)
-            h = torch.cat([(Lf_hocbf + self._alpha(hocbf - self.barrier_cfg.epsilon)), ac_h], dim=1)
-            A, b = self._make_eq_const(x, Q.shape)
-            u_star = QPFunction()(Q, c, G, h, A, b)
+        if torch.any(gamma_pos_ind):
+            masked_x = x[gamma_pos_ind, ...]
+            Q, c = self._make_objective(masked_x)
+            ac_G = self._ac_G(masked_x)
+            ac_h = self._ac_h(masked_x)
+            G = torch.cat([-Lg_hocbf[gamma_pos_ind, ...].unsqueeze(1), ac_G], dim=1)
+            h = torch.cat([(Lf_hocbf[gamma_pos_ind, ...] + self._alpha(hocbf[gamma_pos_ind, ...] - self.barrier_cfg.epsilon)), ac_h], dim=1)
+            A, b = self._make_eq_const(masked_x, Q.shape)
+            u_star_qp = QPFunction()(Q, c, G, h, A, b)
 
-        u_star = torch.where(gamma <0, ub_select, u_star)
+        u_star[gamma_pos_ind, ...] = u_star_qp
         beta = torch.where(gamma > 0,
                            torch.where(gamma >= 1, 1, gamma),
                            0)

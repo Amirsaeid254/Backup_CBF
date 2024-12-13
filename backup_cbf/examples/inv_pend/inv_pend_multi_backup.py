@@ -58,7 +58,6 @@ x0 = torch.tensor([[0.5, 0.0],
                    [-2.7, 0.0]])
 
 
-# x0 = torch.tensor([0.5, 0.0], dtype=torch.float64).unsqueeze(0)
 
 
 # Instantiate dynamics

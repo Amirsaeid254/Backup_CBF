@@ -83,7 +83,7 @@ x0 = torch.tensor([[0.5, 0.0],
                    [-2.0, 0.0]])
 
 
-# x0 = torch.tensor([0.5, 0.0], dtype=torch.float64).unsqueeze(0)
+x0 = torch.tensor([0.5, 0.0], dtype=torch.float64).unsqueeze(0)
 timestep = 0.1
 sim_time = 20.0
 
