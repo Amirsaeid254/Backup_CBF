@@ -3,9 +3,6 @@
 from attrdict import AttrDict as AD
 import matplotlib as mpl
 from math import pi
-
-from triton.language import dtype
-
 from backup_cbf.examples.inv_pend.inv_pend_dynamics import InvertPendDynamics
 from backup_cbf.examples.inv_pend.map_config import map_config
 from backup_cbf.barriers.backup_barrier import BackupBarrier
@@ -45,15 +42,6 @@ control_bounds = torch.tensor([-1.5, 1.5], dtype=torch.float64)
 ub_gain = torch.tensor([[-3,-3]], dtype=torch.float64)
 ub_center = torch.tensor([[0.0, 0.0]], dtype=torch.float64)
 
-
-
-# ub_gain = torch.tensor([[-3, -3],
-#            [-3, -3],
-#            [-3, -3]], dtype=torch.float64)
-#
-# ub_center = torch.tensor([[0, 0],
-#              [pi/2, 0],
-#              [-pi/2, 0]]).to(torch.float64)
 
 
 # Instantiate dynamics
